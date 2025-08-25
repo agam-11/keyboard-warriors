@@ -7,14 +7,15 @@ import { python } from "@codemirror/lang-python";
 import { javascript } from "@codemirror/lang-javascript";
 import { cpp } from "@codemirror/lang-cpp";
 import { okaidia } from "@uiw/codemirror-theme-okaidia";
-import VaultModal from "./VaultModal"; // <-- IMPORT THE NEW MODAL
+import VaultModal from "./VaultModal";
+import { motion } from "framer-motion"; // <-- IMPORT FRAMER MOTION
 
 const API_URL = "http://localhost:3001/run-code";
 
 // ... (Keep the SVG Icons)
 const LockIcon = () => (
   <svg
-    xmlns="http://www.w3.org/2000/svg"
+    xmlns="http://www.w.org/2000/svg"
     className="h-5 w-5 mr-3 inline-block text-muted"
     fill="none"
     viewBox="0 0 24 24"
@@ -57,8 +58,6 @@ export default function EventPage({ session }) {
   const [language, setLanguage] = useState("python");
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState("");
-
-  // NEW STATE FOR THE MODAL
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revealedWord, setRevealedWord] = useState("");
 
@@ -151,7 +150,6 @@ export default function EventPage({ session }) {
     await supabase.auth.signOut();
   };
 
-  // UPDATED handleSubmitCode FUNCTION
   const handleSubmitCode = async () => {
     if (!code || !activeQuestion) return;
 
@@ -187,7 +185,6 @@ export default function EventPage({ session }) {
       const result = await response.json();
 
       if (result.is_correct) {
-        // On correct answer, find the secret word and open the modal
         const solvedQuestion = questions.find(
           (q) => q.id === activeQuestion.id
         );
@@ -208,14 +205,12 @@ export default function EventPage({ session }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-6 lg:p-8 flex flex-col">
-      {/* RENDER THE MODAL */}
       <VaultModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         secretWord={revealedWord}
       />
 
-      {/* ... (The rest of the JSX is exactly the same) */}
       <header className="flex justify-between items-center mb-6 border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-widest text-primary animate-pulse">
@@ -332,14 +327,19 @@ export default function EventPage({ session }) {
           )}
         </div>
 
+        {/* UPDATED LEADERBOARD PANEL */}
         <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
           <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
             LEADERBOARD
           </h2>
           <ul className="space-y-2">
             {leaderboard.map((p, index) => (
-              <li
+              <motion.li
                 key={p.email}
+                layout // This is the magic property that enables the animation
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
                 className="flex justify-between items-center bg-muted/20 p-2 rounded"
               >
                 <span className="flex items-center">
@@ -351,7 +351,7 @@ export default function EventPage({ session }) {
                 <span className="font-bold text-primary bg-primary/10 px-2 py-1 text-xs rounded">
                   {p.score} Solved
                 </span>
-              </li>
+              </motion.li>
             ))}
           </ul>
         </div>
