@@ -8,14 +8,16 @@ import { javascript } from "@codemirror/lang-javascript";
 import { cpp } from "@codemirror/lang-cpp";
 import { okaidia } from "@uiw/codemirror-theme-okaidia";
 import VaultModal from "./VaultModal";
-import { motion } from "framer-motion"; // <-- IMPORT FRAMER MOTION
+import WinnerScreen from "./WinnerScreen"; // <-- IMPORT THE WINNER SCREEN
+import { motion, AnimatePresence } from "framer-motion";
 
 const API_URL = "http://localhost:3001/run-code";
+const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
 
 // ... (Keep the SVG Icons)
 const LockIcon = () => (
   <svg
-    xmlns="http://www.w.org/2000/svg"
+    xmlns="http://www.w3.org/2000/svg"
     className="h-5 w-5 mr-3 inline-block text-muted"
     fill="none"
     viewBox="0 0 24 24"
@@ -60,6 +62,9 @@ export default function EventPage({ session }) {
   const [message, setMessage] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [revealedWord, setRevealedWord] = useState("");
+  const [finalAttempt, setFinalAttempt] = useState("");
+  const [gameWon, setGameWon] = useState(false);
+  const [collectedWords, setCollectedWords] = useState([]);
 
   const languageExtensions = {
     python: [python()],
@@ -95,6 +100,11 @@ export default function EventPage({ session }) {
     );
     const solvedIds = new Set(userSubmissions.map((s) => s.question_id));
     setSolvedQuestionIds(solvedIds);
+
+    const words = questions
+      .filter((q) => solvedIds.has(q.id))
+      .map((q) => q.secret_word);
+    setCollectedWords(words);
 
     const firstUnsolved = questions.find((q) => !solvedIds.has(q.id));
     setActiveQuestion(firstUnsolved || null);
@@ -152,16 +162,13 @@ export default function EventPage({ session }) {
 
   const handleSubmitCode = async () => {
     if (!code || !activeQuestion) return;
-
     setIsLoading(true);
     setMessage("");
-
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
-
       const response = await fetch(API_URL, {
         method: "POST",
         headers: {
@@ -174,16 +181,13 @@ export default function EventPage({ session }) {
           question_id: activeQuestion.id,
         }),
       });
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(
           errorData.error || `Server returned an error: ${response.statusText}`
         );
       }
-
       const result = await response.json();
-
       if (result.is_correct) {
         const solvedQuestion = questions.find(
           (q) => q.id === activeQuestion.id
@@ -203,6 +207,19 @@ export default function EventPage({ session }) {
     }
   };
 
+  const handleFinalSubmit = () => {
+    if (finalAttempt.trim().toUpperCase() === FINAL_PHRASE) {
+      setGameWon(true);
+    } else {
+      setMessage("INCORRECT PHRASE. ACCESS DENIED.");
+    }
+  };
+
+  // CORRECTED LOGIC: If the game is won, render the winner screen and nothing else.
+  if (gameWon) {
+    return <WinnerScreen />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground p-4 md:p-6 lg:p-8 flex flex-col">
       <VaultModal
@@ -211,6 +228,7 @@ export default function EventPage({ session }) {
         secretWord={revealedWord}
       />
 
+      {/* ... (The rest of the JSX is exactly the same) */}
       <header className="flex justify-between items-center mb-6 border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-widest text-primary animate-pulse">
@@ -273,7 +291,7 @@ export default function EventPage({ session }) {
           <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
             {activeQuestion
               ? `CHALLENGE: ${activeQuestion.title}`
-              : "ALL VAULTS CLEARED"}
+              : "FINAL CHALLENGE"}
           </h2>
           {activeQuestion ? (
             <>
@@ -321,13 +339,55 @@ export default function EventPage({ session }) {
               </button>
             </>
           ) : (
-            <div className="flex-grow flex items-center justify-center text-muted">
-              <p>Proceed to the final stage!</p>
+            <div className="flex-grow flex flex-col items-center justify-center text-center">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="w-full"
+              >
+                <p className="text-lg text-foreground mb-4">
+                  You have collected all the secret words. Unscramble them to
+                  form the final phrase and unlock the mainframe.
+                </p>
+                <div className="flex flex-wrap justify-center gap-4 mb-8">
+                  {collectedWords.map((word) => (
+                    <div
+                      key={word}
+                      className="bg-muted/50 border border-border px-4 py-2 rounded text-2xl font-bold text-primary animate-pulse"
+                    >
+                      {word}
+                    </div>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={finalAttempt}
+                  onChange={(e) => setFinalAttempt(e.target.value)}
+                  placeholder="Enter the final phrase..."
+                  className="w-full max-w-lg bg-background border border-muted rounded px-3 py-2 focus:outline-none focus:border-primary focus:ring-1 focus:ring-ring transition-all duration-300"
+                />
+                {message && (
+                  <div
+                    className={`mt-4 p-2 rounded text-xs whitespace-pre-wrap ${
+                      message.startsWith("SYSTEM")
+                        ? "bg-accent/20 text-accent"
+                        : "bg-destructive/20 text-destructive"
+                    }`}
+                  >
+                    {message}
+                  </div>
+                )}
+                <button
+                  onClick={handleFinalSubmit}
+                  className="mt-4 w-full max-w-lg bg-accent text-background font-bold py-2 px-4 rounded hover:bg-opacity-90 transition-colors duration-300"
+                >
+                  UNLOCK MAINFRAME
+                </button>
+              </motion.div>
             </div>
           )}
         </div>
 
-        {/* UPDATED LEADERBOARD PANEL */}
         <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
           <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
             LEADERBOARD
@@ -336,7 +396,7 @@ export default function EventPage({ session }) {
             {leaderboard.map((p, index) => (
               <motion.li
                 key={p.email}
-                layout // This is the magic property that enables the animation
+                layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, ease: "easeInOut" }}
