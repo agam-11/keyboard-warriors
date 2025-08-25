@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  /* Cyber Black */
+  --color-background: #0a0a0a;
+  /* Light Cyan for text */
+  --color-foreground: #7fffff;
+  /* Main Cyan */
+  --color-primary: #00ffff;
+  /* Cyber Magenta */
+  --color-destructive: #ff00ff;
+  /* Cyber Lime */
+  --color-accent: #39ff14;
+  /* Dark Gray */
+  --color-muted: #555555;
+  /* Dark Cyan for borders */
+  --color-border: #008b8b;
+  /* Main Cyan for focus rings */
+  --color-ring: #00ffff;
+}
+
+@layer base {
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: "Fira Code", "Source Code Pro", monospace;
+  }
+}

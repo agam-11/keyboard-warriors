@@ -1,0 +1,361 @@
+// Path: frontend/src/components/EventPage.jsx
+
+import { useState, useEffect } from "react";
+import { supabase } from "../supabaseClient";
+import CodeMirror from "@uiw/react-codemirror";
+import { python } from "@codemirror/lang-python";
+import { javascript } from "@codemirror/lang-javascript";
+import { cpp } from "@codemirror/lang-cpp";
+import { okaidia } from "@uiw/codemirror-theme-okaidia";
+import VaultModal from "./VaultModal"; // <-- IMPORT THE NEW MODAL
+
+const API_URL = "http://localhost:3001/run-code";
+
+// ... (Keep the SVG Icons)
+const LockIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="h-5 w-5 mr-3 inline-block text-muted"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+    />
+  </svg>
+);
+const CheckCircleIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="h-5 w-5 mr-3 inline-block text-primary"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={2}
+      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+    />
+  </svg>
+);
+
+export default function EventPage({ session }) {
+  // ... (Keep all existing state)
+  const [questions, setQuestions] = useState([]);
+  const [submissions, setSubmissions] = useState([]);
+  const [participants, setParticipants] = useState([]);
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [activeQuestion, setActiveQuestion] = useState(null);
+  const [solvedQuestionIds, setSolvedQuestionIds] = useState(new Set());
+  const [code, setCode] = useState("");
+  const [language, setLanguage] = useState("python");
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  // NEW STATE FOR THE MODAL
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [revealedWord, setRevealedWord] = useState("");
+
+  const languageExtensions = {
+    python: [python()],
+    javascript: [javascript({ jsx: true })],
+    cpp: [cpp()],
+  };
+
+  // ... (Keep all existing useEffect hooks)
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      const { data: questionsData } = await supabase
+        .from("questions")
+        .select("*")
+        .order("order", { ascending: true });
+      setQuestions(questionsData || []);
+
+      const { data: participantsData } = await supabase
+        .from("participants")
+        .select("id, email");
+      setParticipants(participantsData || []);
+
+      const { data: submissionsData } = await supabase
+        .from("submissions")
+        .select("*");
+      setSubmissions(submissionsData || []);
+    };
+    fetchInitialData();
+  }, []);
+
+  useEffect(() => {
+    const userSubmissions = submissions.filter(
+      (s) => s.participant_id === session.user.id && s.is_correct
+    );
+    const solvedIds = new Set(userSubmissions.map((s) => s.question_id));
+    setSolvedQuestionIds(solvedIds);
+
+    const firstUnsolved = questions.find((q) => !solvedIds.has(q.id));
+    setActiveQuestion(firstUnsolved || null);
+    setCode("");
+    setMessage("");
+
+    const scores = participants.reduce((acc, p) => {
+      const participantSubmissions = submissions.filter(
+        (s) => s.participant_id === p.id && s.is_correct
+      );
+      const uniqueSolved = new Set(
+        participantSubmissions.map((s) => s.question_id)
+      );
+      const lastSubmissionTime = Math.max(
+        0,
+        ...participantSubmissions.map((s) => new Date(s.submitted_at).getTime())
+      );
+
+      acc[p.id] = {
+        email: p.email,
+        score: uniqueSolved.size,
+        lastSubmission: lastSubmissionTime,
+      };
+      return acc;
+    }, {});
+
+    const sortedLeaderboard = Object.values(scores).sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return a.lastSubmission - b.lastSubmission;
+    });
+
+    setLeaderboard(sortedLeaderboard);
+  }, [submissions, questions, participants, session.user.id]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("public:submissions")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "submissions" },
+        (payload) => {
+          setSubmissions((currentSubmissions) => [
+            ...currentSubmissions,
+            payload.new,
+          ]);
+        }
+      )
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // UPDATED handleSubmitCode FUNCTION
+  const handleSubmitCode = async () => {
+    if (!code || !activeQuestion) return;
+
+    setIsLoading(true);
+    setMessage("");
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          code,
+          language,
+          question_id: activeQuestion.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(
+          errorData.error || `Server returned an error: ${response.statusText}`
+        );
+      }
+
+      const result = await response.json();
+
+      if (result.is_correct) {
+        // On correct answer, find the secret word and open the modal
+        const solvedQuestion = questions.find(
+          (q) => q.id === activeQuestion.id
+        );
+        if (solvedQuestion) {
+          setRevealedWord(solvedQuestion.secret_word);
+          setIsModalOpen(true);
+        }
+      } else {
+        setMessage(`Incorrect. Output:\n${result.output}`);
+      }
+    } catch (error) {
+      console.error("Submission Error:", error);
+      setMessage(`Error: ${error.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background text-foreground p-4 md:p-6 lg:p-8 flex flex-col">
+      {/* RENDER THE MODAL */}
+      <VaultModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        secretWord={revealedWord}
+      />
+
+      {/* ... (The rest of the JSX is exactly the same) */}
+      <header className="flex justify-between items-center mb-6 border-b border-border pb-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-widest text-primary animate-pulse">
+            KEYBOARD WARRIORS
+          </h1>
+          <p className="text-sm text-muted">
+            Participant: {session.user.email}
+          </p>
+        </div>
+        <button
+          onClick={handleLogout}
+          className="border border-destructive text-destructive px-4 py-2 rounded hover:bg-destructive hover:text-background transition-colors duration-300"
+        >
+          Logout
+        </button>
+      </header>
+
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
+          <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
+            VAULT STATUS
+          </h2>
+          <ul className="space-y-3">
+            {questions.map((q, index) => {
+              const isSolved = solvedQuestionIds.has(q.id);
+              const isLocked =
+                !isSolved && activeQuestion && q.order > activeQuestion.order;
+              const isActive = activeQuestion && q.id === activeQuestion.id;
+
+              return (
+                <li
+                  key={q.id}
+                  className={`p-3 rounded border transition-all duration-300 ${
+                    isActive ? "bg-primary/10 border-primary" : "border-muted"
+                  } ${
+                    isLocked
+                      ? "opacity-40 cursor-not-allowed"
+                      : "cursor-default"
+                  }`}
+                >
+                  {isSolved ? <CheckCircleIcon /> : <LockIcon />}
+                  <span
+                    className={
+                      isSolved
+                        ? "text-primary"
+                        : isLocked
+                        ? "text-muted"
+                        : "text-foreground"
+                    }
+                  >
+                    Vault #{index + 1}: {q.title}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        <div className="lg:col-span-6 bg-background/50 border border-border rounded-lg p-4 flex flex-col">
+          <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
+            {activeQuestion
+              ? `CHALLENGE: ${activeQuestion.title}`
+              : "ALL VAULTS CLEARED"}
+          </h2>
+          {activeQuestion ? (
+            <>
+              <div className="flex-grow text-foreground mb-4 whitespace-pre-wrap p-2 bg-black/20 rounded">
+                <p>{activeQuestion.prompt}</p>
+              </div>
+              <div className="flex items-center mb-2">
+                <label className="text-sm mr-2">Language:</label>
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  className="bg-muted text-foreground rounded px-2 py-1"
+                >
+                  <option value="python">Python</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="cpp">C++</option>
+                </select>
+              </div>
+              <div className="h-64 bg-black border border-muted rounded font-mono text-sm overflow-hidden">
+                <CodeMirror
+                  value={code}
+                  height="256px"
+                  theme={okaidia}
+                  extensions={languageExtensions[language]}
+                  onChange={(value) => setCode(value)}
+                />
+              </div>
+              {message && (
+                <div
+                  className={`mt-4 p-2 rounded text-xs whitespace-pre-wrap ${
+                    message.startsWith("Correct")
+                      ? "bg-accent/20 text-accent"
+                      : "bg-destructive/20 text-destructive"
+                  }`}
+                >
+                  {message}
+                </div>
+              )}
+              <button
+                onClick={handleSubmitCode}
+                disabled={isLoading}
+                className="mt-4 w-full bg-primary text-background font-bold py-2 px-4 rounded hover:bg-opacity-90 transition-colors duration-300 disabled:opacity-50 disabled:animate-pulse"
+              >
+                {isLoading ? "EXECUTING..." : "SUBMIT & RUN"}
+              </button>
+            </>
+          ) : (
+            <div className="flex-grow flex items-center justify-center text-muted">
+              <p>Proceed to the final stage!</p>
+            </div>
+          )}
+        </div>
+
+        <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
+          <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
+            LEADERBOARD
+          </h2>
+          <ul className="space-y-2">
+            {leaderboard.map((p, index) => (
+              <li
+                key={p.email}
+                className="flex justify-between items-center bg-muted/20 p-2 rounded"
+              >
+                <span className="flex items-center">
+                  <span className="font-bold text-sm w-6 mr-2 text-primary">
+                    {index + 1}.
+                  </span>
+                  <span className="text-sm truncate">{p.email}</span>
+                </span>
+                <span className="font-bold text-primary bg-primary/10 px-2 py-1 text-xs rounded">
+                  {p.score} Solved
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </main>
+    </div>
+  );
+}
