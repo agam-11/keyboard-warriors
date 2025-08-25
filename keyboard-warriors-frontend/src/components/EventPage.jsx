@@ -8,8 +8,9 @@ import { javascript } from "@codemirror/lang-javascript";
 import { cpp } from "@codemirror/lang-cpp";
 import { okaidia } from "@uiw/codemirror-theme-okaidia";
 import VaultModal from "./VaultModal";
-import WinnerScreen from "./WinnerScreen"; // <-- IMPORT THE WINNER SCREEN
+import WinnerScreen from "./WinnerScreen";
 import { motion, AnimatePresence } from "framer-motion";
+import { useSounds } from "../hooks/useSounds"; // <-- 1. IMPORT THE SOUNDS HOOK
 
 const API_URL = "http://localhost:3001/run-code";
 const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
@@ -49,6 +50,8 @@ const CheckCircleIcon = () => (
 );
 
 export default function EventPage({ session }) {
+  const { playSuccess, playError, playWinner, playClick } = useSounds(); // <-- 2. INITIALIZE THE HOOK
+
   // ... (Keep all existing state)
   const [questions, setQuestions] = useState([]);
   const [submissions, setSubmissions] = useState([]);
@@ -157,10 +160,12 @@ export default function EventPage({ session }) {
   }, []);
 
   const handleLogout = async () => {
+    playClick(); // <-- 3. PLAY CLICK SOUND
     await supabase.auth.signOut();
   };
 
   const handleSubmitCode = async () => {
+    playClick(); // <-- 3. PLAY CLICK SOUND
     if (!code || !activeQuestion) return;
     setIsLoading(true);
     setMessage("");
@@ -189,6 +194,7 @@ export default function EventPage({ session }) {
       }
       const result = await response.json();
       if (result.is_correct) {
+        playSuccess(); // <-- 4. PLAY SUCCESS SOUND
         const solvedQuestion = questions.find(
           (q) => q.id === activeQuestion.id
         );
@@ -197,9 +203,11 @@ export default function EventPage({ session }) {
           setIsModalOpen(true);
         }
       } else {
+        playError(); // <-- 5. PLAY ERROR SOUND
         setMessage(`Incorrect. Output:\n${result.output}`);
       }
     } catch (error) {
+      playError(); // <-- 5. PLAY ERROR SOUND
       console.error("Submission Error:", error);
       setMessage(`Error: ${error.message}`);
     } finally {
@@ -208,14 +216,16 @@ export default function EventPage({ session }) {
   };
 
   const handleFinalSubmit = () => {
+    playClick(); // <-- 3. PLAY CLICK SOUND
     if (finalAttempt.trim().toUpperCase() === FINAL_PHRASE) {
+      playWinner(); // <-- 6. PLAY WINNER SOUND
       setGameWon(true);
     } else {
+      playError(); // <-- 5. PLAY ERROR SOUND
       setMessage("INCORRECT PHRASE. ACCESS DENIED.");
     }
   };
 
-  // CORRECTED LOGIC: If the game is won, render the winner screen and nothing else.
   if (gameWon) {
     return <WinnerScreen />;
   }
