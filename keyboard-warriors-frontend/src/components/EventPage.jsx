@@ -1,6 +1,6 @@
 // Path: frontend/src/components/EventPage.jsx
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../supabaseClient";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
@@ -10,7 +10,7 @@ import { okaidia } from "@uiw/codemirror-theme-okaidia";
 import VaultModal from "./VaultModal";
 import WinnerScreen from "./WinnerScreen";
 import { motion, AnimatePresence } from "framer-motion";
-import { useSounds } from "../hooks/useSounds"; // <-- 1. IMPORT THE SOUNDS HOOK
+import { useSounds } from "../hooks/useSounds";
 
 const API_URL = "http://localhost:3001/run-code";
 const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
@@ -50,7 +50,7 @@ const CheckCircleIcon = () => (
 );
 
 export default function EventPage({ session }) {
-  const { playSuccess, playError, playWinner, playClick } = useSounds(); // <-- 2. INITIALIZE THE HOOK
+  const { playSuccess, playError, playWinner, playClick } = useSounds();
 
   // ... (Keep all existing state)
   const [questions, setQuestions] = useState([]);
@@ -75,29 +75,10 @@ export default function EventPage({ session }) {
     cpp: [cpp()],
   };
 
-  // ... (Keep all existing useEffect hooks)
+  // Leaderboard and active question calculation
   useEffect(() => {
-    const fetchInitialData = async () => {
-      const { data: questionsData } = await supabase
-        .from("questions")
-        .select("*")
-        .order("order", { ascending: true });
-      setQuestions(questionsData || []);
+    if (questions.length === 0 && participants.length === 0) return;
 
-      const { data: participantsData } = await supabase
-        .from("participants")
-        .select("id, email");
-      setParticipants(participantsData || []);
-
-      const { data: submissionsData } = await supabase
-        .from("submissions")
-        .select("*");
-      setSubmissions(submissionsData || []);
-    };
-    fetchInitialData();
-  }, []);
-
-  useEffect(() => {
     const userSubmissions = submissions.filter(
       (s) => s.participant_id === session.user.id && s.is_correct
     );
@@ -142,30 +123,59 @@ export default function EventPage({ session }) {
     setLeaderboard(sortedLeaderboard);
   }, [submissions, questions, participants, session.user.id]);
 
+  // Combined data fetching and real-time subscription hook
   useEffect(() => {
+    const fetchInitialData = async () => {
+      const { data: questionsData } = await supabase
+        .from("questions")
+        .select("*")
+        .order("order", { ascending: true });
+      setQuestions(questionsData || []);
+
+      const { data: participantsData } = await supabase
+        .from("participants")
+        .select("id, email");
+      setParticipants(participantsData || []);
+
+      const { data: submissionsData } = await supabase
+        .from("submissions")
+        .select("*");
+      setSubmissions(submissionsData || []);
+    };
+
+    fetchInitialData();
+
     const channel = supabase
       .channel("public:submissions")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "submissions" },
         (payload) => {
-          setSubmissions((currentSubmissions) => [
-            ...currentSubmissions,
-            payload.new,
-          ]);
+          console.log("New submission received!", payload);
+          // This will update the UI for OTHER users in real-time
+          setSubmissions((currentSubmissions) => {
+            // Avoid adding duplicates if the user is the one who submitted
+            if (currentSubmissions.some((s) => s.id === payload.new.id)) {
+              return currentSubmissions;
+            }
+            return [...currentSubmissions, payload.new];
+          });
         }
       )
       .subscribe();
-    return () => supabase.removeChannel(channel);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleLogout = async () => {
-    playClick(); // <-- 3. PLAY CLICK SOUND
+    playClick();
     await supabase.auth.signOut();
   };
 
   const handleSubmitCode = async () => {
-    playClick(); // <-- 3. PLAY CLICK SOUND
+    playClick();
     if (!code || !activeQuestion) return;
     setIsLoading(true);
     setMessage("");
@@ -194,20 +204,37 @@ export default function EventPage({ session }) {
       }
       const result = await response.json();
       if (result.is_correct) {
-        playSuccess(); // <-- 4. PLAY SUCCESS SOUND
+        playSuccess();
         const solvedQuestion = questions.find(
           (q) => q.id === activeQuestion.id
         );
         if (solvedQuestion) {
           setRevealedWord(solvedQuestion.secret_word);
           setIsModalOpen(true);
+
+          // =================================================================================
+          // THE GUARANTEED FIX: Manually update the UI for the current user
+          // =================================================================================
+          const newSubmission = {
+            id: Math.random(), // Temporary unique ID
+            participant_id: session.user.id,
+            participant_email: session.user.email,
+            question_id: activeQuestion.id,
+            is_correct: true,
+            submitted_at: new Date().toISOString(),
+          };
+          setSubmissions((currentSubmissions) => [
+            ...currentSubmissions,
+            newSubmission,
+          ]);
+          // =================================================================================
         }
       } else {
-        playError(); // <-- 5. PLAY ERROR SOUND
+        playError();
         setMessage(`Incorrect. Output:\n${result.output}`);
       }
     } catch (error) {
-      playError(); // <-- 5. PLAY ERROR SOUND
+      playError();
       console.error("Submission Error:", error);
       setMessage(`Error: ${error.message}`);
     } finally {
@@ -216,12 +243,12 @@ export default function EventPage({ session }) {
   };
 
   const handleFinalSubmit = () => {
-    playClick(); // <-- 3. PLAY CLICK SOUND
+    playClick();
     if (finalAttempt.trim().toUpperCase() === FINAL_PHRASE) {
-      playWinner(); // <-- 6. PLAY WINNER SOUND
+      playWinner();
       setGameWon(true);
     } else {
-      playError(); // <-- 5. PLAY ERROR SOUND
+      playError();
       setMessage("INCORRECT PHRASE. ACCESS DENIED.");
     }
   };
@@ -238,7 +265,6 @@ export default function EventPage({ session }) {
         secretWord={revealedWord}
       />
 
-      {/* ... (The rest of the JSX is exactly the same) */}
       <header className="flex justify-between items-center mb-6 border-b border-border pb-4">
         <div>
           <h1 className="text-2xl font-bold tracking-widest text-primary animate-pulse">
@@ -399,9 +425,9 @@ export default function EventPage({ session }) {
         </div>
 
         <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
-          <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
-            LEADERBOARD
-          </h2>
+          <div className="flex justify-between items-center mb-4 border-b border-border pb-2">
+            <h2 className="text-xl font-bold text-primary">LEADERBOARD</h2>
+          </div>
           <ul className="space-y-2">
             {leaderboard.map((p, index) => (
               <motion.li
