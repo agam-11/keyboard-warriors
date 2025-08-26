@@ -1,34 +1,31 @@
-// Path: src/App.jsx
+// Path: frontend/src/App.jsx
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { supabase } from "./supabaseClient";
 import LoginPage from "./components/LoginPage";
-import EventPage from "./components/EventPage"; // Import the real EventPage
+import EventPage from "./components/EventPage";
+import BroadcastLeaderboard from "./components/BroadcastLeaderboard";
 
-export default function App() {
+// This component will protect the EventPage route
+const ProtectedRoute = ({ children }) => {
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true); // Add a loading state
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setLoading(false); // Stop loading once we have auth state
+      setLoading(false);
     });
-
-    // Initial session check
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!session) {
-        setLoading(false);
-      }
+      if (!session) setLoading(false);
       setSession(session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // Show a loading indicator while checking for session
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -39,7 +36,25 @@ export default function App() {
     );
   }
 
+  // If there is a session, render the children (EventPage) and pass the session as a prop
+  // Otherwise, render the LoginPage
+  return session ? React.cloneElement(children, { session }) : <LoginPage />;
+};
+
+export default function App() {
   return (
-    <div>{!session ? <LoginPage /> : <EventPage session={session} />}</div>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <EventPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/leaderboard" element={<BroadcastLeaderboard />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
