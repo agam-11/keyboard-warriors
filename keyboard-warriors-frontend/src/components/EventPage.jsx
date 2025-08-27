@@ -126,6 +126,16 @@ export default function EventPage({ session }) {
   // Combined data fetching and real-time subscription hook
   useEffect(() => {
     const fetchInitialData = async () => {
+      // Check if user has already won
+      const { data: winnerData } = await supabase
+        .from("winners")
+        .select("participant_id")
+        .eq("participant_id", session.user.id);
+      if (winnerData && winnerData.length > 0) {
+        setGameWon(true);
+        return; // Stop fetching other data if the game is already won
+      }
+
       const { data: questionsData } = await supabase
         .from("questions")
         .select("*")
@@ -151,10 +161,7 @@ export default function EventPage({ session }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "submissions" },
         (payload) => {
-          console.log("New submission received!", payload);
-          // This will update the UI for OTHER users in real-time
           setSubmissions((currentSubmissions) => {
-            // Avoid adding duplicates if the user is the one who submitted
             if (currentSubmissions.some((s) => s.id === payload.new.id)) {
               return currentSubmissions;
             }
@@ -167,7 +174,7 @@ export default function EventPage({ session }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [session.user.id]);
 
   const handleLogout = async () => {
     playClick();
@@ -212,11 +219,8 @@ export default function EventPage({ session }) {
           setRevealedWord(solvedQuestion.secret_word);
           setIsModalOpen(true);
 
-          // =================================================================================
-          // THE GUARANTEED FIX: Manually update the UI for the current user
-          // =================================================================================
           const newSubmission = {
-            id: Math.random(), // Temporary unique ID
+            id: Math.random(),
             participant_id: session.user.id,
             participant_email: session.user.email,
             question_id: activeQuestion.id,
@@ -227,7 +231,6 @@ export default function EventPage({ session }) {
             ...currentSubmissions,
             newSubmission,
           ]);
-          // =================================================================================
         }
       } else {
         playError();
@@ -242,10 +245,14 @@ export default function EventPage({ session }) {
     }
   };
 
-  const handleFinalSubmit = () => {
+  const handleFinalSubmit = async () => {
     playClick();
     if (finalAttempt.trim().toUpperCase() === FINAL_PHRASE) {
       playWinner();
+      // Save the win to the database
+      await supabase
+        .from("winners")
+        .insert({ participant_id: session.user.id });
       setGameWon(true);
     } else {
       playError();
