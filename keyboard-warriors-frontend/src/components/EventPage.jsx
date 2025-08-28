@@ -13,7 +13,7 @@ import Timer from "./Timer"; // <-- IMPORT TIMER
 import { motion, AnimatePresence } from "framer-motion";
 import { useSounds } from "../hooks/useSounds";
 
-const API_URL = "https://keyboard-warriors-kdgf.onrender.com";
+const API_URL = "https://keyboard-warriors-kdgf.onrender.com/run-code";
 const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
 
 // ... (Keep the SVG Icons)
