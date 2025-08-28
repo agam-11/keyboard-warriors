@@ -9,10 +9,11 @@ import { cpp } from "@codemirror/lang-cpp";
 import { okaidia } from "@uiw/codemirror-theme-okaidia";
 import VaultModal from "./VaultModal";
 import WinnerScreen from "./WinnerScreen";
+import Timer from "./Timer"; // <-- IMPORT TIMER
 import { motion, AnimatePresence } from "framer-motion";
 import { useSounds } from "../hooks/useSounds";
 
-const API_URL = "http://localhost:3001/run-code";
+const API_URL = "https://keyboard-warriors-kdgf.onrender.com";
 const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
 
 // ... (Keep the SVG Icons)
@@ -69,32 +70,32 @@ export default function EventPage({ session }) {
   const [gameWon, setGameWon] = useState(false);
   const [collectedWords, setCollectedWords] = useState([]);
 
+  // NEW STATE FOR TIMER
+  const [startTime, setStartTime] = useState(null);
+  const [finishTime, setFinishTime] = useState(null);
+
   const languageExtensions = {
     python: [python()],
     javascript: [javascript({ jsx: true })],
     cpp: [cpp()],
   };
 
-  // Leaderboard and active question calculation
+  // ... (Keep the leaderboard useEffect)
   useEffect(() => {
     if (questions.length === 0 && participants.length === 0) return;
-
     const userSubmissions = submissions.filter(
       (s) => s.participant_id === session.user.id && s.is_correct
     );
     const solvedIds = new Set(userSubmissions.map((s) => s.question_id));
     setSolvedQuestionIds(solvedIds);
-
     const words = questions
       .filter((q) => solvedIds.has(q.id))
       .map((q) => q.secret_word);
     setCollectedWords(words);
-
     const firstUnsolved = questions.find((q) => !solvedIds.has(q.id));
     setActiveQuestion(firstUnsolved || null);
     setCode("");
     setMessage("");
-
     const scores = participants.reduce((acc, p) => {
       const participantSubmissions = submissions.filter(
         (s) => s.participant_id === p.id && s.is_correct
@@ -106,7 +107,6 @@ export default function EventPage({ session }) {
         0,
         ...participantSubmissions.map((s) => new Date(s.submitted_at).getTime())
       );
-
       acc[p.id] = {
         email: p.email,
         score: uniqueSolved.size,
@@ -114,26 +114,34 @@ export default function EventPage({ session }) {
       };
       return acc;
     }, {});
-
     const sortedLeaderboard = Object.values(scores).sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.lastSubmission - b.lastSubmission;
     });
-
     setLeaderboard(sortedLeaderboard);
   }, [submissions, questions, participants, session.user.id]);
 
-  // Combined data fetching and real-time subscription hook
+  // UPDATED data fetching and real-time hook
   useEffect(() => {
     const fetchInitialData = async () => {
+      // Fetch event start time
+      const { data: configData } = await supabase
+        .from("event_config")
+        .select("start_time")
+        .limit(1)
+        .single();
+      if (configData) setStartTime(configData.start_time);
+
       // Check if user has already won
       const { data: winnerData } = await supabase
         .from("winners")
-        .select("participant_id")
-        .eq("participant_id", session.user.id);
-      if (winnerData && winnerData.length > 0) {
+        .select("won_at")
+        .eq("participant_id", session.user.id)
+        .single();
+      if (winnerData) {
         setGameWon(true);
-        return; // Stop fetching other data if the game is already won
+        setFinishTime(winnerData.won_at);
+        return;
       }
 
       const { data: questionsData } = await supabase
@@ -162,25 +170,18 @@ export default function EventPage({ session }) {
         { event: "INSERT", schema: "public", table: "submissions" },
         (payload) => {
           setSubmissions((currentSubmissions) => {
-            if (currentSubmissions.some((s) => s.id === payload.new.id)) {
+            if (currentSubmissions.some((s) => s.id === payload.new.id))
               return currentSubmissions;
-            }
             return [...currentSubmissions, payload.new];
           });
         }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [session.user.id]);
 
-  const handleLogout = async () => {
-    playClick();
-    await supabase.auth.signOut();
-  };
-
+  // ... (Keep handleSubmitCode)
   const handleSubmitCode = async () => {
     playClick();
     if (!code || !activeQuestion) return;
@@ -218,7 +219,6 @@ export default function EventPage({ session }) {
         if (solvedQuestion) {
           setRevealedWord(solvedQuestion.secret_word);
           setIsModalOpen(true);
-
           const newSubmission = {
             id: Math.random(),
             participant_id: session.user.id,
@@ -245,14 +245,24 @@ export default function EventPage({ session }) {
     }
   };
 
+  const handleLogout = async () => {
+    playClick();
+    await supabase.auth.signOut();
+  };
+
+  // UPDATED final submit handler
   const handleFinalSubmit = async () => {
     playClick();
     if (finalAttempt.trim().toUpperCase() === FINAL_PHRASE) {
       playWinner();
-      // Save the win to the database
-      await supabase
+      const { data, error } = await supabase
         .from("winners")
-        .insert({ participant_id: session.user.id });
+        .insert({ participant_id: session.user.id })
+        .select()
+        .single();
+      if (data) {
+        setFinishTime(data.won_at);
+      }
       setGameWon(true);
     } else {
       playError();
@@ -281,6 +291,8 @@ export default function EventPage({ session }) {
             Participant: {session.user.email}
           </p>
         </div>
+        {/* ADD TIMER TO HEADER */}
+        <Timer startTime={startTime} finishTime={finishTime} />
         <button
           onClick={handleLogout}
           className="border border-destructive text-destructive px-4 py-2 rounded hover:bg-destructive hover:text-background transition-colors duration-300"
@@ -289,6 +301,7 @@ export default function EventPage({ session }) {
         </button>
       </header>
 
+      {/* ... (Rest of the JSX is the same) */}
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
           <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
@@ -432,9 +445,9 @@ export default function EventPage({ session }) {
         </div>
 
         <div className="lg:col-span-3 bg-background/50 border border-border rounded-lg p-4">
-          <div className="flex justify-between items-center mb-4 border-b border-border pb-2">
-            <h2 className="text-xl font-bold text-primary">LEADERBOARD</h2>
-          </div>
+          <h2 className="text-xl font-bold mb-4 border-b border-border pb-2 text-primary">
+            LEADERBOARD
+          </h2>
           <ul className="space-y-2">
             {leaderboard.map((p, index) => (
               <motion.li

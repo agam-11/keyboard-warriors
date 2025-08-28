@@ -1,0 +1,28 @@
+# Logs
+./keyboard-warriors-frontend/logs
+./keyboard-warriors-frontend/*.log
+./keyboard-warriors-frontend/npm-debug.log*
+./keyboard-warriors-frontend/yarn-debug.log*
+./keyboard-warriors-frontend/yarn-error.log*
+./keyboard-warriors-frontend/pnpm-debug.log*
+./keyboard-warriors-frontend/lerna-debug.log*
+./keyboard-warriors-frontend/.env
+
+./keyboard-warriors-frontend/node_modules
+./keyboard-warriors-frontend/dist
+./keyboard-warriors-frontend/dist-ssr
+./keyboard-warriors-frontend/*.local
+
+# Editor directories and files
+./keyboard-warriors-frontend/.vscode/*
+./keyboard-warriors-frontend/!.vscode/extensions.json
+./keyboard-warriors-frontend/.idea
+./keyboard-warriors-frontend/.DS_Store
+./keyboard-warriors-frontend/*.suo
+./keyboard-warriors-frontend/*.ntvs*
+./keyboard-warriors-frontend/*.njsproj
+./keyboard-warriors-frontend/*.sln
+./keyboard-warriors-frontend/*.sw?
+
+./keyboard-warriors-backend/.env
+./keyboard-warriors-backend/node_modules

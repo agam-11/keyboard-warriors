@@ -4,7 +4,16 @@ import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient";
 import { motion } from "framer-motion";
 
-// Helper to get styling for Top 3 winners
+// Helper to format milliseconds into a duration string (e.g., "12m 34s")
+const formatDuration = (ms) => {
+  if (ms <= 0) return "0s";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+};
+
+// ... (Keep getRankStyling helper)
 const getRankStyling = (index) => {
   switch (index) {
     case 0:
@@ -14,7 +23,7 @@ const getRankStyling = (index) => {
     case 2:
       return "border-amber-700 text-amber-700 shadow-lg shadow-amber-700/20"; // Bronze
     default:
-      return "border-border text-foreground"; // Default for others
+      return "border-border text-foreground";
   }
 };
 
@@ -23,28 +32,34 @@ export default function BroadcastLeaderboard() {
   const [participants, setParticipants] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [winners, setWinners] = useState([]);
+  const [startTime, setStartTime] = useState(null);
 
   useEffect(() => {
-    // This combined hook fetches initial data and sets up the real-time listener
     const fetchAndSubscribe = async () => {
-      // 1. Fetch initial data
+      // Fetch start time
+      const { data: configData } = await supabase
+        .from("event_config")
+        .select("start_time")
+        .limit(1)
+        .single();
+      if (configData) setStartTime(new Date(configData.start_time));
+
+      // ... (rest of the fetching is the same)
       const { data: participantsData } = await supabase
         .from("participants")
         .select("id, email");
       setParticipants(participantsData || []);
-
       const { data: submissionsData } = await supabase
         .from("submissions")
         .select("*");
       setSubmissions(submissionsData || []);
-
       const { data: winnersData } = await supabase
         .from("winners")
         .select("*")
         .order("won_at", { ascending: true });
       setWinners(winnersData || []);
 
-      // 2. Set up real-time listeners for both submissions and winners
+      // ... (rest of the subscriptions are the same)
       const submissionsChannel = supabase
         .channel("public:submissions-broadcast")
         .on(
@@ -53,7 +68,6 @@ export default function BroadcastLeaderboard() {
           (payload) => setSubmissions((current) => [...current, payload.new])
         )
         .subscribe();
-
       const winnersChannel = supabase
         .channel("public:winners-broadcast")
         .on(
@@ -68,23 +82,18 @@ export default function BroadcastLeaderboard() {
         )
         .subscribe();
 
-      // 3. Clean up the listeners
       return () => {
         supabase.removeChannel(submissionsChannel);
         supabase.removeChannel(winnersChannel);
       };
     };
-
     fetchAndSubscribe();
   }, []);
 
   useEffect(() => {
-    // This effect recalculates the leaderboard whenever submissions or participants change
-    if (participants.length === 0) return;
+    if (participants.length === 0 || !startTime) return;
 
     const winnerIds = new Set(winners.map((w) => w.participant_id));
-
-    // Separate participants who are still playing
     const stillPlaying = participants.filter((p) => !winnerIds.has(p.id));
 
     const playingScores = stillPlaying
@@ -114,9 +123,11 @@ export default function BroadcastLeaderboard() {
 
     const winnerScores = winners.map((w) => {
       const participant = participants.find((p) => p.id === w.participant_id);
+      // Calculate duration
+      const duration = new Date(w.won_at) - startTime;
       return {
         email: participant?.email || "Unknown",
-        won_at: w.won_at,
+        duration,
         isWinner: true,
       };
     });
@@ -126,11 +137,10 @@ export default function BroadcastLeaderboard() {
       15
     );
     setLeaderboard(combinedLeaderboard);
-  }, [submissions, participants, winners]);
+  }, [submissions, participants, winners, startTime]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex font-mono">
-      {/* Left Half: Leaderboard */}
       <div className="w-1/2 p-8 flex flex-col">
         <h1 className="text-5xl font-bold tracking-widest text-primary animate-pulse mb-6 whitespace-nowrap">
           KEYBOARD WARRIORS
@@ -160,7 +170,7 @@ export default function BroadcastLeaderboard() {
                 </span>
                 {p.isWinner ? (
                   <span className="font-bold text-xl">
-                    Finished: {new Date(p.won_at).toLocaleTimeString()}
+                    {formatDuration(p.duration)}
                   </span>
                 ) : (
                   <span className="font-bold bg-primary/10 px-3 py-1 text-xl rounded-md text-primary">
@@ -172,8 +182,6 @@ export default function BroadcastLeaderboard() {
           </ul>
         </div>
       </div>
-
-      {/* Right Half: Placeholder for Sponsor Videos */}
       <div className="w-1/2 bg-black flex items-center justify-center border-l-4 border-primary">
         <div className="text-center text-muted">
           <h2 className="text-4xl font-bold">SPONSOR VIDEO</h2>
