@@ -20,7 +20,11 @@ const allowedOrigins = [
   "https://keyboard-warriors-mwqq1s8oo-agam11s-projects.vercel.app/",
 ];
 // Middleware setup
-app.use(cors({ origin: allowedOrigins })); // Allow requests from our frontend
+app.use(
+  cors({
+    origin: "https://keyboard-warriors-mwqq1s8oo-agam11s-projects.vercel.app",
+  })
+); // Allow requests from our frontend
 app.use(express.json());
 
 // =================================================================================
