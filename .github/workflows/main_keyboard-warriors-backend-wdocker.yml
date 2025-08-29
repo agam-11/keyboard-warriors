@@ -30,8 +30,11 @@ jobs:
       uses: docker/build-push-action@v3
       with:
         push: true
-        tags: mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/appsvc/staticsite:${{ github.sha }}
-        file: ./Dockerfile
+        # =================================================================================
+        # FIX #1: Give the image a proper name and point to the correct Dockerfile
+        # =================================================================================
+        tags: mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/keyboard-warriors-backend:${{ github.sha }}
+        file: ./backend/Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
@@ -48,4 +51,7 @@ jobs:
         app-name: 'keyboard-warriors-backend-wdocker'
         slot-name: 'production'
         publish-profile: ${{ secrets.AzureAppService_PublishProfile_3bb5414383e54522a75597a972977e9d }}
-        images: 'mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/appsvc/staticsite:${{ github.sha }}'
+        # =================================================================================
+        # FIX #2: Make sure the deploy step uses the same image name we just built
+        # =================================================================================
+        images: 'mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/keyboard-warriors-backend:${{ github.sha }}'
