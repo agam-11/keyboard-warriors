@@ -14,7 +14,7 @@ const os = require("os");
 // INITIALIZATION
 // =================================================================================
 const app = express();
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 8080;
 const allowedOrigins = [
   "http://localhost:5173",
   "https://keyboard-warriors-mwqq1s8oo-agam11s-projects.vercel.app",
