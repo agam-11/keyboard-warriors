@@ -12,10 +12,21 @@ import WinnerScreen from "./WinnerScreen";
 import Timer from "./Timer"; // <-- IMPORT TIMER
 import { motion, AnimatePresence } from "framer-motion";
 import { useSounds } from "../hooks/useSounds";
+import InfoModal from "./InfoModal"; // <-- IMPORT THE NEW MODAL
 
-const API_URL = "https://keyboard-warriors-production.up.railway.app/run-code";
+// const API_URL = "https://keyboard-warriors-production.up.railway.app/run-code";
+const API_URL = "http://localhost:3001/run-code";
 
-const FINAL_PHRASE = "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG";
+const FINAL_PHRASE = "LIVE LIFE LOVE LAUGH";
+const PATTERN_TEXT = `1 2 3 4 5
+1 2 3 4
+1 2 3
+1 2
+1
+1 2
+1 2 3
+1 2 3 4
+1 2 3 4 5`;
 
 // ... (Keep the SVG Icons)
 const LockIcon = () => (
@@ -51,6 +62,28 @@ const CheckCircleIcon = () => (
   </svg>
 );
 
+const EyeIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="h-4 w-4 mr-2"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth={2}
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+    />
+  </svg>
+);
+
 export default function EventPage({ session }) {
   const { playSuccess, playError, playWinner, playClick } = useSounds();
 
@@ -70,6 +103,10 @@ export default function EventPage({ session }) {
   const [finalAttempt, setFinalAttempt] = useState("");
   const [gameWon, setGameWon] = useState(false);
   const [collectedWords, setCollectedWords] = useState([]);
+
+  // NEW STATE FOR THE INFO MODAL
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [modalContent, setModalContent] = useState(null);
 
   // NEW STATE FOR TIMER
   const [startTime, setStartTime] = useState(null);
@@ -271,6 +308,19 @@ export default function EventPage({ session }) {
     }
   };
 
+  // NEW HANDLERS FOR INFO MODAL
+  const showPattern = () => {
+    playClick();
+    setModalContent({ type: "text", content: PATTERN_TEXT });
+    setInfoModalOpen(true);
+  };
+
+  const showImage = (url) => {
+    playClick();
+    setModalContent({ type: "image", content: url });
+    setInfoModalOpen(true);
+  };
+
   if (gameWon) {
     return <WinnerScreen />;
   }
@@ -281,6 +331,13 @@ export default function EventPage({ session }) {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         secretWord={revealedWord}
+      />
+
+      {/* RENDER THE NEW INFO MODAL */}
+      <InfoModal
+        isOpen={infoModalOpen}
+        onClose={() => setInfoModalOpen(false)}
+        content={modalContent}
       />
 
       <header className="flex justify-between items-center mb-6 border-b border-border pb-4">
@@ -354,7 +411,25 @@ export default function EventPage({ session }) {
             <>
               <div className="flex-grow text-foreground mb-4 whitespace-pre-wrap p-2 bg-black/20 rounded">
                 <p>{activeQuestion.prompt}</p>
+                {/* NEW BUTTONS FOR PATTERN AND IMAGE */}
+                {activeQuestion.id === 1 && (
+                  <button
+                    onClick={showPattern}
+                    className="mt-4 text-sm flex items-center justify-center w-full border border-accent text-accent px-3 py-2 rounded hover:bg-accent hover:text-background transition-colors duration-300"
+                  >
+                    <EyeIcon /> Show Required Pattern
+                  </button>
+                )}
+                {activeQuestion.id === 4 && activeQuestion.attachment_url && (
+                  <button
+                    onClick={() => showImage(activeQuestion.attachment_url)}
+                    className="mt-4 text-sm flex items-center justify-center w-full border border-accent text-accent px-3 py-2 rounded hover:bg-accent hover:text-background transition-colors duration-300"
+                  >
+                    <EyeIcon /> Show Reference Image
+                  </button>
+                )}
               </div>
+
               <div className="flex items-center mb-2">
                 <label className="text-sm mr-2">Language:</label>
                 <select
