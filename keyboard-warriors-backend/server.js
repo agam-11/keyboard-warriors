@@ -18,7 +18,7 @@ const port = process.env.PORT || 3001;
 const allowedOrigins = [
   "http://localhost:5173",
   "https://keyboard-warriors-mwqq1s8oo-agam11s-projects.vercel.app",
-  "https://keyboard-warriors-ebon.vercel.app/",
+  "https://keyboard-warriors-ebon.vercel.app",
 ];
 // Middleware setup
 app.use(
