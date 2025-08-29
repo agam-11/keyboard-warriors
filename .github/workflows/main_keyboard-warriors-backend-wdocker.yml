@@ -23,19 +23,15 @@ jobs:
       uses: docker/login-action@v2
       with:
         registry: https://mcr.microsoft.com/
-        username: ${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}
-        password: ${{ secrets.AzureAppService_ContainerPassword_1825fe43da6141e994a02077396ff0c4 }}
+        username: ${{ secrets.AzureAppService_ContainerUsername_c0e341498b9f4dd78e6c9a73cf462808 }}
+        password: ${{ secrets.AzureAppService_ContainerPassword_a889c2f06b064261bd8adffa3c3b264c }}
 
     - name: Build and push container image to registry
       uses: docker/build-push-action@v3
       with:
         push: true
-        # =================================================================================
-        # FIX: Force the image name to match the old placeholder
-        # and point to the correct Dockerfile in the backend folder.
-        # =================================================================================
-        tags: mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/appsvc/staticsite:${{ github.sha }}
-        file: ./keyboard-warriors-backend/Dockerfile
+        tags: mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_c0e341498b9f4dd78e6c9a73cf462808 }}/appsvc/staticsite:${{ github.sha }}
+        file: ./Dockerfile
 
   deploy:
     runs-on: ubuntu-latest
@@ -51,7 +47,5 @@ jobs:
       with:
         app-name: 'keyboard-warriors-backend-wdocker'
         slot-name: 'production'
-        publish-profile: ${{ secrets.AzureAppService_PublishProfile_3bb5414383e54522a75597a972977e9d }}
-        # NOTE: The image name here is already correct, so no change is needed.
-        images: 'mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_22e40afbf234436db30d4aa14ff51c74 }}/appsvc/staticsite:${{ github.sha }}'
-
+        publish-profile: ${{ secrets.AzureAppService_PublishProfile_d60024330e034da3bfad49a0603fc1f1 }}
+        images: 'mcr.microsoft.com/${{ secrets.AzureAppService_ContainerUsername_c0e341498b9f4dd78e6c9a73cf462808 }}/appsvc/staticsite:${{ github.sha }}'
