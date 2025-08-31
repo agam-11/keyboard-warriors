@@ -8,7 +8,7 @@ const { createClient } = require("@supabase/supabase-js");
 // INITIALIZATION
 // =================================================================================
 const app = express();
-const port = process.env.PORT || 80;
+const port = process.env.PORT || 8080; // Render uses PORT env var
 const allowedOrigins = [
   "http://localhost:5173",
   "https://keyboard-warriors-mwqq1s8oo-agam11s-projects.vercel.app",
@@ -21,9 +21,9 @@ app.use(express.json());
 // LANGUAGE & TEST CASE CONFIGURATION
 // =================================================================================
 const languageMap = {
-  python: 92, // Python 3.10
-  javascript: 93, // Node.js 18.15
-  cpp: 54, // C++ (GCC 9.2.0)
+  python: { lang: "python3", versionIndex: "4" },
+  javascript: { lang: "nodejs", versionIndex: "4" },
+  cpp: { lang: "cpp17", versionIndex: "1" },
 };
 
 const testCases = {
@@ -47,58 +47,35 @@ const testCases = {
 };
 
 // =================================================================================
-// JUDGE0 EXECUTION LOGIC
+// JDOODLE EXECUTION LOGIC
 // =================================================================================
-const JUDGE0_URL = "http://localhost:2358";
-
-async function executeCodeWithJudge0(code, testCase, language) {
-  const languageId = languageMap[language];
-  if (!languageId) {
+async function executeCodeWithJDoodle(code, testCase, language) {
+  const langConfig = languageMap[language];
+  if (!langConfig) {
     throw new Error(`Unsupported language: ${language}`);
   }
 
-  // Step 1: Create the submission
-  const submissionResponse = await axios.post(
-    `${JUDGE0_URL}/submissions?base64_encoded=false&wait=false`,
-    {
-      source_code: code,
-      language_id: languageId,
+  const response = await axios({
+    method: "post",
+    url: "https://api.jdoodle.com/v1/execute",
+    data: {
+      clientId: process.env.JDOODLE_CLIENT_ID,
+      clientSecret: process.env.JDOODLE_CLIENT_SECRET,
+      script: code,
       stdin: testCase.stdin,
-    }
-  );
+      language: langConfig.lang,
+      versionIndex: langConfig.versionIndex,
+    },
+    headers: { "Content-Type": "application/json" },
+  });
 
-  const { token } = submissionResponse.data;
-  if (!token) {
-    throw new Error("Failed to create submission with Judge0.");
-  }
-
-  // Step 2: Poll for the result
-  let result;
-  while (true) {
-    await new Promise((resolve) => setTimeout(resolve, 250)); // Wait 250ms between checks
-    const resultResponse = await axios.get(
-      `${JUDGE0_URL}/submissions/${token}?base64_encoded=false`
-    );
-    const statusId = resultResponse.data.status.id;
-
-    if (statusId > 2) {
-      // Status > 2 means it's finished (Accepted, Wrong Answer, Time Limit, etc.)
-      result = resultResponse.data;
-      break;
-    }
-  }
-
-  if (result.status.id !== 3) {
-    // 3 = Accepted
-    return (
-      result.stderr ||
-      result.compile_output ||
-      result.message ||
-      "An error occurred."
+  if (response.data.error || response.data.statusCode !== 200) {
+    throw new Error(
+      response.data.error || `JDoodle API Error: ${response.data.statusCode}`
     );
   }
 
-  return result.stdout.trim();
+  return response.data.output.trim();
 }
 
 // =================================================================================
@@ -131,7 +108,7 @@ app.post("/run-code", async (req, res) => {
     }
 
     // Code Execution
-    const actualOutput = await executeCodeWithJudge0(code, testCase, language);
+    const actualOutput = await executeCodeWithJDoodle(code, testCase, language);
     const isCorrect = actualOutput === testCase.expectedOutput.trim();
 
     // Database Update

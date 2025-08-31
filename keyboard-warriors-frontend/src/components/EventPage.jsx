@@ -15,8 +15,10 @@ import { useSounds } from "../hooks/useSounds";
 import InfoModal from "./InfoModal"; // <-- IMPORT THE NEW MODAL
 
 // const API_URL = "https://keyboard-warriors-production.up.railway.app/run-code";
-const API_URL = "http://localhost:3001/run-code";
+// const API_URL = "http://localhost:3001/run-code";
 // const API_URL = "http://40.81.241.235/run-code";
+// const API_URL = "http://20.40.57.155/run-code";
+const API_URL = "http://4.240.91.240/run-code";
 
 const FINAL_PHRASE = "LIVE LIFE LOVE LAUGH";
 const PATTERN_TEXT = `1 2 3 4 5
